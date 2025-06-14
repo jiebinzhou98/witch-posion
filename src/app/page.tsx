@@ -1,4 +1,5 @@
 'use client'
+
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -12,7 +13,7 @@ export default function HomePage() {
   async function handleCreateRoom() {
     const { data, error } = await supabase
       .from('rooms')
-      .insert([{ candies: null, current_turn: null, winner: null }])
+      .insert([{ candies: [], current_turn: null, winner: null }])
       .select()
       .single()
 
