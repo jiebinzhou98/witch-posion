@@ -16,7 +16,7 @@ type Room = {
   candies: Candy[] | null
   poisonAIndex: number | null
   poisonBIndex: number | null
-  current_turn: 'choosePoisonA' | 'choosePoisonB' | 'playerA' | 'playerB'
+  current_turn: 'choosePoisonA' | 'choosePoisonB' | 'playerA' | 'playerB' | null
   winner: string | null
   playerA: string | null
   playerB: string | null
@@ -30,6 +30,7 @@ export default function GamePage() {
   const [role, setRole] = useState<'playerA' | 'playerB' | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
 
+  // 本地生成玩家ID
   useEffect(() => {
     if (typeof window === 'undefined') return
     let id = localStorage.getItem('playerId')
@@ -40,15 +41,7 @@ export default function GamePage() {
     setPlayerId(id)
   }, [])
 
-  useEffect(() => {
-    async function fetchRoom() {
-      const { data } = await supabase.from('rooms').select('*').eq('id', numericRoomId).single()
-      if (data) setRoom(data)
-      setLoading(false)
-    }
-    if (roomId) fetchRoom()
-  }, [numericRoomId, roomId])
-
+  // 订阅 room 实时变化
   useEffect(() => {
     if (!numericRoomId) return
     const channel = supabase
@@ -69,25 +62,37 @@ export default function GamePage() {
     }
   }, [numericRoomId])
 
+  // 拉取 room 数据
+  useEffect(() => {
+    async function fetchRoom() {
+      const { data } = await supabase.from('rooms').select('*').eq('id', numericRoomId).single()
+      if (data) setRoom(data)
+      setLoading(false)
+    }
+    if (roomId) fetchRoom()
+  }, [numericRoomId, roomId])
+
+  // 绑定身份逻辑（自动分配 A/B 角色）
   useEffect(() => {
     if (!room || !playerId) return
-    if (!room.playerA) {
-      supabase.from('rooms').update({ playerA: playerId }).eq('id', numericRoomId)
-    } else if (room.playerA === playerId) {
-      setRole('playerA')
-    } else if (!room.playerB) {
-      supabase.from('rooms').update({ playerB: playerId }).eq('id', numericRoomId)
-    } else if (room.playerB === playerId) {
-      setRole('playerB')
+
+    const bindRole = async () => {
+      if (!room.playerA) {
+        await supabase.from('rooms').update({ playerA: playerId }).eq('id', numericRoomId)
+        setRole('playerA')
+      } else if (room.playerA === playerId) {
+        setRole('playerA')
+      } else if (!room.playerB) {
+        await supabase.from('rooms').update({ playerB: playerId }).eq('id', numericRoomId)
+        setRole('playerB')
+      } else if (room.playerB === playerId) {
+        setRole('playerB')
+      }
     }
+    bindRole()
   }, [room, playerId, numericRoomId])
 
-  useEffect(() => {
-    if (!room || !playerId) return
-    if (room.playerA === playerId) setRole('playerA')
-    if (room.playerB === playerId) setRole('playerB')
-  }, [room, playerId])
-
+  // 双人就绪自动生成糖果
   useEffect(() => {
     if (!room || room.candies?.length || !room.playerA || !room.playerB) return
     handleGenerateCandies()
@@ -134,7 +139,11 @@ export default function GamePage() {
     }
   }
 
-if (!room || loading || !playerId) return <div>Loading...</div>
+  // 优化 loading 判断逻辑
+  if (!room || loading || !playerId) return <div>Loading...</div>
+
+  // 还未分配角色时，显示等待提示
+  if (!role) return <div>等待加入房间中...</div>
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4">
