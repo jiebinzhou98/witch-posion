@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { getOrCreatePlayerId } from "@/lib/playerId"
+import { v4 as uuidv4 } from "uuid"  // 直接引入 uuid
 
 type Candy = {
   type: 'safe' | 'poison'
@@ -27,21 +27,33 @@ export default function GamePage() {
   const [room, setRoom] = useState<Room | null>(null)
   const [loading, setLoading] = useState(true)
   const [role, setRole] = useState<'playerA' | 'playerB' | null>(null)
+  const [playerId, setPlayerId] = useState<string | null>(null)
 
-  const playerId = getOrCreatePlayerId()
+  // 👇 SSR-safe 初始化 playerId
+  useEffect(() => {
+    if (typeof window === 'undefined') return
 
+    let id = localStorage.getItem('playerId')
+    if (!id) {
+      id = uuidv4()
+      localStorage.setItem('playerId', id)
+    }
+    setPlayerId(id)
+  }, [])
+
+  // 拉取 room 数据
   useEffect(() => {
     async function fetchRoom() {
       const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
       if (data) setRoom(data)
       setLoading(false)
     }
-    fetchRoom()
+    if (roomId) fetchRoom()
   }, [roomId])
 
+  // Realtime 订阅
   useEffect(() => {
     if (!roomId) return
-
     const channel = supabase
       .channel('room-realtime')
       .on('postgres_changes', {
@@ -60,7 +72,7 @@ export default function GamePage() {
     }
   }, [roomId])
 
-  // 自动注册身份
+  // 身份自动绑定逻辑
   useEffect(() => {
     if (!room || !playerId) return
 
@@ -75,14 +87,14 @@ export default function GamePage() {
     }
   }, [room, playerId, roomId])
 
-  // 断线重连身份恢复
+  // 身份恢复（断线重连安全）
   useEffect(() => {
     if (!room || !playerId) return
     if (room.playerA === playerId) setRole('playerA')
     if (room.playerB === playerId) setRole('playerB')
   }, [room, playerId])
 
-  // 双人就绪后自动生成糖果
+  // 双人就绪自动生成糖果
   useEffect(() => {
     if (!room || room.candies?.length || !room.playerA || !room.playerB) return
     handleGenerateCandies()
@@ -129,7 +141,8 @@ export default function GamePage() {
     }
   }
 
-  if (!room || !role || loading) return <div>Loading...</div>
+  // 核心 loading 逻辑
+  if (!room || !role || loading || !playerId) return <div>Loading...</div>
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4">
