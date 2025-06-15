@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { v4 as uuidv4 } from "uuid"  // 直接引入 uuid
+import { v4 as uuidv4 } from "uuid"
 
 type Candy = {
   type: 'safe' | 'poison'
@@ -29,10 +29,9 @@ export default function GamePage() {
   const [role, setRole] = useState<'playerA' | 'playerB' | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
 
-  // 👇 SSR-safe 初始化 playerId
+  // SSR-safe 初始化 playerId
   useEffect(() => {
     if (typeof window === 'undefined') return
-
     let id = localStorage.getItem('playerId')
     if (!id) {
       id = uuidv4()
@@ -41,7 +40,7 @@ export default function GamePage() {
     setPlayerId(id)
   }, [])
 
-  // 拉取 room 数据
+  // 拉取房间数据
   useEffect(() => {
     async function fetchRoom() {
       const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
@@ -51,7 +50,7 @@ export default function GamePage() {
     if (roomId) fetchRoom()
   }, [roomId])
 
-  // Realtime 订阅
+  // 实时订阅房间数据
   useEffect(() => {
     if (!roomId) return
     const channel = supabase
@@ -72,22 +71,7 @@ export default function GamePage() {
     }
   }, [roomId])
 
-  // 身份自动绑定逻辑
-  useEffect(() => {
-    if (!room || !playerId) return
-
-    if (!room.playerA) {
-      supabase.from('rooms').update({ playerA: playerId }).eq('id', roomId)
-    } else if (room.playerA === playerId) {
-      setRole('playerA')
-    } else if (!room.playerB) {
-      supabase.from('rooms').update({ playerB: playerId }).eq('id', roomId)
-    } else if (room.playerB === playerId) {
-      setRole('playerB')
-    }
-  }, [room, playerId, roomId])
-
-  // 身份恢复（断线重连安全）
+  // 断线重连身份恢复
   useEffect(() => {
     if (!room || !playerId) return
     if (room.playerA === playerId) setRole('playerA')
@@ -106,6 +90,12 @@ export default function GamePage() {
     await supabase.from('rooms').update({
       candies, current_turn: 'choosePoisonA', winner: null, poisonAIndex: null, poisonBIndex: null
     }).eq('id', roomId)
+  }
+
+  async function bindAsPlayer(selectedRole: 'playerA' | 'playerB') {
+    if (!room || !playerId) return
+    await supabase.from('rooms').update({ [selectedRole]: playerId }).eq('id', roomId)
+    setRole(selectedRole)
   }
 
   async function handleSelectPoisonA(index: number) {
@@ -141,8 +131,19 @@ export default function GamePage() {
     }
   }
 
-  // 核心 loading 逻辑
-  if (!room || !role || loading || !playerId) return <div>Loading...</div>
+  // 核心 Loading 逻辑 (完全分离 role 的等待逻辑)
+  if (!room || !playerId || loading) return <div>Loading...</div>
+
+  if (!role) {
+    return (
+      <div className="flex flex-col gap-4 items-center justify-center min-h-screen">
+        <h1 className="text-2xl font-bold">Witch Poison 🎯</h1>
+        <div className="text-lg font-bold">请选择你的身份：</div>
+        <Button onClick={() => bindAsPlayer('playerA')}>我是 Player A</Button>
+        <Button onClick={() => bindAsPlayer('playerB')}>我是 Player B</Button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4">
