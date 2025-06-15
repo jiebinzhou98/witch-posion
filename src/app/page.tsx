@@ -11,7 +11,7 @@ export default function HomePage() {
   const router = useRouter()
 
   async function handleCreateRoom() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('rooms')
       .insert([{ candies: [], current_turn: null, winner: null }])
       .select()
