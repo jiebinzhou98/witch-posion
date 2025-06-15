@@ -12,7 +12,7 @@ type Candy = {
 }
 
 type Room = {
-  id: string
+  id: number
   candies: Candy[] | null
   poisonAIndex: number | null
   poisonBIndex: number | null
@@ -24,12 +24,12 @@ type Room = {
 
 export default function GamePage() {
   const { roomId } = useParams<{ roomId: string }>()
+  const numericRoomId = Number(roomId)
   const [room, setRoom] = useState<Room | null>(null)
   const [loading, setLoading] = useState(true)
   const [role, setRole] = useState<'playerA' | 'playerB' | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
 
-  // SSR-safe 初始化 playerId
   useEffect(() => {
     if (typeof window === 'undefined') return
     let id = localStorage.getItem('playerId')
@@ -40,26 +40,24 @@ export default function GamePage() {
     setPlayerId(id)
   }, [])
 
-  // 拉取房间数据
   useEffect(() => {
     async function fetchRoom() {
-      const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single()
+      const { data } = await supabase.from('rooms').select('*').eq('id', numericRoomId).single()
       if (data) setRoom(data)
       setLoading(false)
     }
     if (roomId) fetchRoom()
-  }, [roomId])
+  }, [numericRoomId, roomId])
 
-  // 实时订阅房间数据
   useEffect(() => {
-    if (!roomId) return
+    if (!numericRoomId) return
     const channel = supabase
       .channel('room-realtime')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'rooms',
-        filter: `id=eq.${roomId}`,
+        filter: `id=eq.${numericRoomId}`,
       }, (payload) => {
         const newData = payload.new as Room
         setRoom(newData)
@@ -69,16 +67,27 @@ export default function GamePage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [roomId])
+  }, [numericRoomId])
 
-  // 断线重连身份恢复
+  useEffect(() => {
+    if (!room || !playerId) return
+    if (!room.playerA) {
+      supabase.from('rooms').update({ playerA: playerId }).eq('id', numericRoomId)
+    } else if (room.playerA === playerId) {
+      setRole('playerA')
+    } else if (!room.playerB) {
+      supabase.from('rooms').update({ playerB: playerId }).eq('id', numericRoomId)
+    } else if (room.playerB === playerId) {
+      setRole('playerB')
+    }
+  }, [room, playerId, numericRoomId])
+
   useEffect(() => {
     if (!room || !playerId) return
     if (room.playerA === playerId) setRole('playerA')
     if (room.playerB === playerId) setRole('playerB')
   }, [room, playerId])
 
-  // 双人就绪自动生成糖果
   useEffect(() => {
     if (!room || room.candies?.length || !room.playerA || !room.playerB) return
     handleGenerateCandies()
@@ -89,21 +98,15 @@ export default function GamePage() {
     const candies: Candy[] = Array(total).fill(null).map(() => ({ type: 'safe', clicked: false }))
     await supabase.from('rooms').update({
       candies, current_turn: 'choosePoisonA', winner: null, poisonAIndex: null, poisonBIndex: null
-    }).eq('id', roomId)
-  }
-
-  async function bindAsPlayer(selectedRole: 'playerA' | 'playerB') {
-    if (!room || !playerId) return
-    await supabase.from('rooms').update({ [selectedRole]: playerId }).eq('id', roomId)
-    setRole(selectedRole)
+    }).eq('id', numericRoomId)
   }
 
   async function handleSelectPoisonA(index: number) {
-    await supabase.from('rooms').update({ poisonAIndex: index, current_turn: 'choosePoisonB' }).eq('id', roomId)
+    await supabase.from('rooms').update({ poisonAIndex: index, current_turn: 'choosePoisonB' }).eq('id', numericRoomId)
   }
 
   async function handleSelectPoisonB(index: number) {
-    await supabase.from('rooms').update({ poisonBIndex: index, current_turn: 'playerA' }).eq('id', roomId)
+    await supabase.from('rooms').update({ poisonBIndex: index, current_turn: 'playerA' }).eq('id', numericRoomId)
   }
 
   async function handleClickCandy(index: number) {
@@ -122,33 +125,20 @@ export default function GamePage() {
     if (poisoned) {
       await supabase.from('rooms')
         .update({ winner: role === 'playerA' ? 'playerB' : 'playerA', candies })
-        .eq('id', roomId)
+        .eq('id', numericRoomId)
     } else {
       const nextTurn = role === 'playerA' ? 'playerB' : 'playerA'
       await supabase.from('rooms')
         .update({ current_turn: nextTurn, candies })
-        .eq('id', roomId)
+        .eq('id', numericRoomId)
     }
   }
 
-  // 核心 Loading 逻辑 (完全分离 role 的等待逻辑)
-  if (!room || !playerId || loading) return <div>Loading...</div>
-
-  if (!role) {
-    return (
-      <div className="flex flex-col gap-4 items-center justify-center min-h-screen">
-        <h1 className="text-2xl font-bold">Witch Poison 🎯</h1>
-        <div className="text-lg font-bold">请选择你的身份：</div>
-        <Button onClick={() => bindAsPlayer('playerA')}>我是 Player A</Button>
-        <Button onClick={() => bindAsPlayer('playerB')}>我是 Player B</Button>
-      </div>
-    )
-  }
+  if (!room || !role || loading || !playerId) return <div>Loading...</div>
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4">
       <h1 className="text-2xl font-bold">Witch Poison 🎯</h1>
-
       <div className="text-lg">你是：{role}</div>
       <div className="text-lg">当前轮到：{room?.current_turn}</div>
 
