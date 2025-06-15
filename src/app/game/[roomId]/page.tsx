@@ -139,6 +139,23 @@ export default function GamePage() {
     }
   }
 
+  async function handleRestartGame() {
+    const total = 25 
+    const candies: Candy[] = Array(total).fill(null).map(() =>({
+        type: 'safe', clicked: false
+    }))
+
+    await supabase
+        .from('rooms')
+        .update({
+            candies,
+            current_turn: 'choosePoisonA',
+            winner: null,
+            poisonAIndex: null,
+            poisonBIndex: null,
+        }).eq('id', numericRoomId)
+  }
+
   // 优化 loading 判断逻辑
   if (!room || loading || !playerId) return <div>Loading...</div>
 
@@ -168,7 +185,10 @@ export default function GamePage() {
       )}
 
       {room?.winner && (
+        <div className="flex flex-col items-center gap-4">
         <div className="text-2xl font-bold text-red-500">🎉 胜者: {room.winner}</div>
+            <Button onClick={handleRestartGame}>重新开始</Button>
+        </div>
       )}
     </div>
   )
