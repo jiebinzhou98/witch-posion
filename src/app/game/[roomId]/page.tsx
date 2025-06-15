@@ -168,52 +168,59 @@ export default function GamePage() {
             <div className="text-lg">你是：{role}</div>
             <div className="text-lg">当前轮到：{room?.current_turn}</div>
 
-            {room?.candies && (
-                <div className="grid grid-cols-5 gap-4">
-                    {room.candies.map((candy, index) => {
+{room?.candies && (
+  <div className="grid grid-cols-5 gap-4">
+    {room.candies.map((candy, index) => {
+      
+      // 选毒药阶段高亮显示（跟你之前逻辑一致）
+      if (room.current_turn === 'choosePoisonA' && role === 'playerA') {
+        const isSelected = room.poisonAIndex === index
+        return (
+          <Button
+            key={index}
+            onClick={() => handleSelectPoisonA(index)}
+            variant="ghost"
+            className={isSelected ? 'bg-purple-500 text-white' : ''}
+          >
+            🍬
+          </Button>
+        )
+      }
 
-                        // 选毒药阶段高亮显示
-                        if (room.current_turn === 'choosePoisonA' && role === 'playerA') {
-                            const isSelected = room.poisonAIndex === index
-                            return (
-                                <Button
-                                    key={index}
-                                    onClick={() => handleSelectPoisonA(index)}
-                                    variant="ghost"
-                                    className={isSelected ? 'bg-red-500 text-white' : ''}
-                                >
-                                    🍬
-                                </Button>
-                            )
-                        }
+      if (room.current_turn === 'choosePoisonB' && role === 'playerB') {
+        const isSelected = room.poisonBIndex === index
+        return (
+          <Button
+            key={index}
+            onClick={() => handleSelectPoisonB(index)}
+            variant="ghost"
+            className={isSelected ? 'bg-purple-500 text-white' : ''}
+          >
+            🍬
+          </Button>
+        )
+      }
 
-                        if (room.current_turn === 'choosePoisonB' && role === 'playerB') {
-                            const isSelected = room.poisonBIndex === index
-                            return (
-                                <Button
-                                    key={index}
-                                    onClick={() => handleSelectPoisonB(index)}
-                                    variant="ghost"
-                                    className={isSelected ? 'bg-purple-500 text-white' : ''}
-                                >
-                                    🍬
-                                </Button>
-                            )
-                        }
+      // 正式游戏阶段时高亮自己选的毒药
+      const showMyPoison =
+        (role === 'playerA' && index === room.poisonAIndex) ||
+        (role === 'playerB' && index === room.poisonBIndex)
 
-                        return (
-                            <Button
-                                key={index}
-                                onClick={() => handleClickCandy(index)}
-                                variant={candy.clicked ? 'secondary' : 'default'}
-                                disabled={candy.clicked}
-                            >
-                                🍬
-                            </Button>
-                        )
-                    })}
-                </div>
-            )}
+      return (
+        <Button
+          key={index}
+          onClick={() => handleClickCandy(index)}
+          variant={candy.clicked ? 'secondary' : 'default'}
+          className={showMyPoison ? 'bg-purple-500 text-white' : ''}
+          disabled={candy.clicked}
+        >
+          🍬
+        </Button>
+      )
+    })}
+  </div>
+)}
+
 
 
             {room?.winner && (
