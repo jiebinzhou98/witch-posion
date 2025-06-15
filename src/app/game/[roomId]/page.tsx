@@ -134,7 +134,7 @@ export default function GamePage() {
     }
   }
 
-  if (!room || !role || loading || !playerId) return <div>Loading...</div>
+if (!room || loading || !playerId) return <div>Loading...</div>
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4">
