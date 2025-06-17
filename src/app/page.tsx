@@ -1,37 +1,29 @@
 'use client'
 
-import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 
 export default function HomePage() {
-  const [roomId, setRoomId] = useState('')
   const router = useRouter()
 
-  async function handleCreateRoom() {
-    const { data } = await supabase
-      .from('rooms')
-      .insert([{ candies: [], current_turn: null, winner: null }])
-      .select()
-      .single()
-
-    if (data) router.push(`/game/${data.id}`)
-  }
-
-  function handleJoinRoom() {
-    router.push(`/game/${roomId}`)
-  }
-
   return (
-    <div className="flex flex-col gap-4 items-center justify-center min-h-screen">
-      <h1 className="text-3xl font-bold">🎯 Witch Poison</h1>
-      <Button onClick={handleCreateRoom}>Create Room</Button>
+    <div className="flex flex-col gap-8 items-center justify-center min-h-screen">
+      <h1 className="text-3xl font-bold">🎮 双人小游戏平台</h1>
 
-      <div className="flex gap-2">
-        <Input value={roomId} onChange={(e) => setRoomId(e.target.value)} placeholder="Enter Room ID" />
-        <Button onClick={handleJoinRoom}>Join</Button>
+      <div className="flex flex-col gap-4">
+        <Button className="w-64" onClick={() => router.push('/witch-poison')}>
+          🍬 Witch Poison
+        </Button>
+
+        <Button className="w-64" onClick={() => router.push('/gomoku')}>
+          ⚫ 五子棋 (Gomoku)
+        </Button>
+
+        <Button className="w-64" onClick={() => router.push('/spy')}>
+          🕵️‍♂️ 谁是间谍
+        </Button>
+
+        {/* 后续可以继续添加更多游戏 */}
       </div>
     </div>
   )
