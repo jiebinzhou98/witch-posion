@@ -175,8 +175,8 @@ export default function GomokuGamePage() {
                                 className={cn(
                                     'w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8',
                                     'rounded-full p-0 border shadow-sm transition duration-150 ease-in-out',
-                                    cell === 'black' && 'bg-black',
-                                    cell === 'white' && 'bg-white border-gray-800',
+                                    cell === 'black' && 'bg-neutral-900',
+                                    cell === 'white' && 'bg-gray-50 border-2 border-gray-700',
                                     cell === 'empty' && 'bg-[#e5e7eb] hover:bg-gray-300' // 浅灰格子
                                 )}
                             />
