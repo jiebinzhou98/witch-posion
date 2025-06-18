@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { useParams } from "next/navigation"
 import { v4 as uuidv4 } from "uuid"
+import { cn } from "@/lib/utils"
 
 type Cell = 'empty' | 'black' | 'white'
 
@@ -111,6 +112,7 @@ export default function GomokuGamePage() {
                 const c = col - dy * step
                 if (r < 0 || c < 0 || r >= board.length || c >= board[0].length) break
                 if (board[r][c] === color) count++
+                else break
             }
             if (count >= 5) return true
         }
@@ -158,6 +160,10 @@ export default function GomokuGamePage() {
     return (
         <div className="flex flex-col items-center gap-2 p-4">
             <h1 className="text-xl font-bold">五子棋</h1>
+            <div className="text-gray-600 text-sm">你是: {role}</div>
+            <div className="text-gray-800 text-lg">
+                当前轮到:{room.current_turn === role ? '你下棋' : '对方下棋'}
+            </div>
             <div className="flex flex-col gap-[2px]">
                 {room.board.map((row, rowIndex) => (
                     <div key={rowIndex} className="flex gap-[2px]">
@@ -165,7 +171,14 @@ export default function GomokuGamePage() {
                             <Button
                                 key={`${rowIndex}-${colIndex}`}
                                 onClick={() => handlePlacePiece(rowIndex, colIndex)}
-                                className={`w-6 h-6 p-0 rounded-full ${cell === 'black' ? 'bg-black' : cell === 'white' ? 'bg-white border border-black' : 'bg-gray-200'}`}
+                                disabled={cell !== 'empty' || !!room.winner || room.current_turn !== role}
+                                className={cn(
+                                    'w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8',
+                                    'rounded-full p-0 border shadow-sm transition duration-150 ease-in-out',
+                                    cell === 'black' && 'bg-black',
+                                    cell === 'white' && 'bg-white border-gray-800',
+                                    cell === 'empty' && 'bg-[#e5e7eb] hover:bg-gray-300' // 浅灰格子
+                                )}
                             />
                         ))}
                     </div>
