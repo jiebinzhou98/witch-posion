@@ -19,8 +19,8 @@ export default function HomePage() {
           ⚫ 五子棋 (Gomoku)
         </Button>
 
-        <Button className="w-64" onClick={() => router.push('/spy')}>
-          🕵️‍♂️ 谁是间谍
+        <Button className="w-64" onClick={() => router.push('/reaction')}>
+          ⚡反应训练游戏
         </Button>
 
         {/* 后续可以继续添加更多游戏 */}
