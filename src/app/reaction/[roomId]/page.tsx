@@ -23,6 +23,7 @@ export default function ReactionRoomPage() {
     const [playerId, setPlayerId] = useState<string | null>(null)
     const [status, setStatus] = useState<'loading' | 'joined' | 'full' | 'error'>('loading')
     const [isReady, setIsReady] = useState(false)
+    const [timeLeft, setTimeLeft] = useState<number | null>(null)
 
     // 初始化玩家 ID
     useEffect(() => {
@@ -143,6 +144,27 @@ export default function ReactionRoomPage() {
         }
     })
 
+    useEffect(() => {
+        if(!room?.game_started || room.game_ended) return
+        setTimeLeft(30)
+
+        const timer = setInterval(() =>{
+            setTimeLeft(prev => {
+                if(prev === null ) return null
+                if(prev <= 1){
+                    clearInterval(timer)
+                    supabase
+                        .from('reaction_rooms')
+                        .update({game_ended: true})
+                        .eq('id', room.id)
+                    return 0
+                }
+                return prev - 1
+            })
+        }, 1000)
+        return () => clearInterval(timer)
+    },[room?.game_started])
+
     if (status === 'loading') return <div className="p-8 text-center">加载中...</div>
     if (status === 'error') return <div className="p-8 text-center text-red-500">房间不存在或加载失败</div>
     if (status === 'full') return <div className="p-8 text-center text-red-500">房间已满，无法加入</div>
@@ -157,8 +179,14 @@ export default function ReactionRoomPage() {
             <p>玩家1：{room?.player1_ready ? '✅ 准备' : '⏳ 未准备'}</p>
             <p>玩家2：{room?.player2_ready ? '✅ 准备' : '⏳ 未准备'}</p>
 
-            {!isReady && <Button onClick={handleReady}></Button>}
+            {!isReady && <Button onClick={handleReady}>准备</Button>}
             {room?.game_started && <p className="text-green-600 font-semibold">🎮游戏开始！</p>}
+            {room?.game_started && !room?.game_ended && (
+                <p className="text-xl text-blue-600">🕙剩余时间：{timeLeft}</p>
+            )}
+            {room?.game_ended && (
+                <p className="text-xl text-red-500">🎉游戏结束</p>
+            )}
             <Button onClick={() => router.push('/')}>退出</Button>
         </div>
     )
