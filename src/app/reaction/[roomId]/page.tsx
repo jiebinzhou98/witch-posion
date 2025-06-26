@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
-import { Button } from "@/components/ui/button"
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { Button } from '@/components/ui/button'
 
-type Room = {
+// 房间类型定义
+interface Room {
   id: number
   player1_id: string | null
   player2_id: string | null
@@ -24,12 +25,13 @@ export default function ReactionRoomPage() {
   const { roomId } = useParams<{ roomId: string }>()
   const router = useRouter()
   const numericRoomId = Number(roomId)
+
   const [room, setRoom] = useState<Room | null>(null)
   const [playerId, setPlayerId] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'joined' | 'full' | 'error'>('loading')
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
 
-  // 初始化玩家 ID
+  // 生成本地唯一玩家 ID
   useEffect(() => {
     const pid = localStorage.getItem('reaction-player-id')
     if (!pid) {
@@ -41,7 +43,7 @@ export default function ReactionRoomPage() {
     }
   }, [])
 
-  // 加入房间逻辑
+  // 加入房间
   useEffect(() => {
     if (!playerId || !numericRoomId) return
 
@@ -57,7 +59,6 @@ export default function ReactionRoomPage() {
         return
       }
 
-      // 第三者禁止加入
       if (
         roomData.player1_id &&
         roomData.player2_id &&
@@ -68,17 +69,11 @@ export default function ReactionRoomPage() {
         return
       }
 
-      // 抢占 player2
       if (roomData.player1_id !== playerId && !roomData.player2_id) {
-        const { error: updateError } = await supabase
+        await supabase
           .from('reaction_rooms')
           .update({ player2_id: playerId })
           .eq('id', numericRoomId)
-
-        if (updateError) {
-          setStatus('error')
-          return
-        }
 
         roomData.player2_id = playerId
       }
@@ -90,7 +85,7 @@ export default function ReactionRoomPage() {
     joinRoom()
   }, [playerId, numericRoomId])
 
-  // 实时监听房间更新
+  // 实时监听房间数据
   useEffect(() => {
     if (!roomId) return
 
@@ -116,28 +111,32 @@ export default function ReactionRoomPage() {
     }
   }, [roomId])
 
+  // 玩家准备
   async function handleReady() {
     if (!room || !playerId) return
 
     const field = playerId === room.player1_id ? 'player1_ready' : 'player2_ready'
-
-    await supabase
+    const { error } = await supabase
       .from('reaction_rooms')
       .update({ [field]: true })
       .eq('id', room.id)
+
+    if (!error) {
+      const { data } = await supabase
+        .from('reaction_rooms')
+        .select('*')
+        .eq('id', room.id)
+        .single()
+
+      if (data) setRoom(data)
+    }
   }
 
-  // 玩家都准备好后自动开始游戏
+  // 自动开始游戏
   useEffect(() => {
     if (!room) return
-
-    if (
-      room.player1_ready &&
-      room.player2_ready &&
-      !room.game_started
-    ) {
-      supabase
-        .from('reaction_rooms')
+    if (room.player1_ready && room.player2_ready && !room.game_started) {
+      supabase.from('reaction_rooms')
         .update({ game_started: true })
         .eq('id', room.id)
     }
@@ -149,7 +148,7 @@ export default function ReactionRoomPage() {
 
     setTimeLeft(30)
     const timer = setInterval(() => {
-      setTimeLeft(prev => {
+      setTimeLeft((prev) => {
         if (prev === null) return null
         if (prev <= 1) {
           clearInterval(timer)
@@ -168,26 +167,29 @@ export default function ReactionRoomPage() {
 
   // player1 控制目标生成
   useEffect(() => {
-    if (!room?.game_started || room.game_ended) return
-    if (playerId !== room.player1_id) return
+    if (!room || !room.game_started || room.game_ended || playerId !== room.player1_id) return
 
     let running = true
 
     const generateTarget = async () => {
       if (!running) return
-      const delay = Math.random() * 1000 + 1000
-      await new Promise(r => setTimeout(r, delay))
 
-      const newTarget = {
+      const delay = Math.random() * 1000 + 1000
+      await new Promise((r) => setTimeout(r, delay))
+
+      const { data: latestRoom } = await supabase
+        .from('reaction_rooms')
+        .select('game_started, game_ended')
+        .eq('id', room.id)
+        .single()
+
+      if (!latestRoom?.game_started || latestRoom?.game_ended) return
+
+      await supabase.from('reaction_rooms').update({
+        current_target_id: crypto.randomUUID(),
         target_x: Math.random(),
         target_y: Math.random(),
-        current_target_id: crypto.randomUUID(),
-      }
-
-      await supabase
-        .from('reaction_rooms')
-        .update(newTarget)
-        .eq('id', room.id)
+      }).eq('id', room.id)
 
       generateTarget()
     }
@@ -196,6 +198,7 @@ export default function ReactionRoomPage() {
     return () => { running = false }
   }, [room?.game_started, room?.game_ended, playerId])
 
+  // render
   if (status === 'loading') return <div className="p-8 text-center">加载中...</div>
   if (status === 'error') return <div className="p-8 text-center text-red-500">房间不存在或加载失败</div>
   if (status === 'full') return <div className="p-8 text-center text-red-500">房间已满，无法加入</div>
@@ -203,26 +206,22 @@ export default function ReactionRoomPage() {
   const youAre = playerId === room?.player1_id ? 'Player 1' : 'Player 2'
   const isYouReady =
     playerId === room?.player1_id ? room?.player1_ready :
-    playerId === room?.player2_id ? room?.player2_ready :
-    false
+    playerId === room?.player2_id ? room?.player2_ready : false
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4">
       <h1 className="text-2xl font-bold">⚡ Reaction 对战房间 #{room?.id}</h1>
 
-      {/* 🎯 游戏开始前 */}
       {!room?.game_started && (
         <>
           <p>你是：{youAre}</p>
           <p>等待对手进入中...</p>
           <p>玩家1：{room?.player1_ready ? '✅ 准备' : '⏳ 未准备'}</p>
           <p>玩家2：{room?.player2_ready ? '✅ 准备' : '⏳ 未准备'}</p>
-
           {!isYouReady && <Button onClick={handleReady}>准备</Button>}
         </>
       )}
 
-      {/* 🎮 游戏进行中 */}
       {room?.game_started && !room?.game_ended && (
         <>
           <p className="text-green-600 font-semibold">🎮 游戏进行中！</p>
@@ -234,7 +233,6 @@ export default function ReactionRoomPage() {
         </>
       )}
 
-      {/* 🎯 点击目标 */}
       {room?.current_target_id && !room?.game_ended && (
         <div
           className="absolute w-12 h-12 bg-red-500 rounded-full cursor-pointer"
@@ -265,7 +263,6 @@ export default function ReactionRoomPage() {
         />
       )}
 
-      {/* 🏁 游戏结束 */}
       {room?.game_ended && (
         <>
           <p className="text-xl text-red-500">🎉 游戏结束</p>
@@ -276,8 +273,8 @@ export default function ReactionRoomPage() {
             {room.player1_score === room.player2_score
               ? '🤝 平局！'
               : (room.player1_score ?? 0) > (room.player2_score ?? 0)
-                ? '🏆 Player 1 获胜！'
-                : '🏆 Player 2 获胜！'}
+              ? '🏆 Player 1 获胜！'
+              : '🏆 Player 2 获胜！'}
           </p>
         </>
       )}
