@@ -6,188 +6,283 @@ import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 
 type Room = {
-    id: number
-    player1_id: string | null
-    player2_id: string | null
-    player1_ready: boolean
-    player2_ready: boolean
-    game_started: boolean
-    game_ended: boolean
+  id: number
+  player1_id: string | null
+  player2_id: string | null
+  player1_ready: boolean
+  player2_ready: boolean
+  game_started: boolean
+  game_ended: boolean
+  current_target_id?: string | null
+  target_x?: number | null
+  target_y?: number | null
+  player1_score?: number | null
+  player2_score?: number | null
 }
 
 export default function ReactionRoomPage() {
-    const { roomId } = useParams<{ roomId: string }>()
-    const router = useRouter()
-    const numericRoomId = Number(roomId)
-    const [room, setRoom] = useState<Room | null>(null)
-    const [playerId, setPlayerId] = useState<string | null>(null)
-    const [status, setStatus] = useState<'loading' | 'joined' | 'full' | 'error'>('loading')
-    const [isReady, setIsReady] = useState(false)
-    const [timeLeft, setTimeLeft] = useState<number | null>(null)
+  const { roomId } = useParams<{ roomId: string }>()
+  const router = useRouter()
+  const numericRoomId = Number(roomId)
+  const [room, setRoom] = useState<Room | null>(null)
+  const [playerId, setPlayerId] = useState<string | null>(null)
+  const [status, setStatus] = useState<'loading' | 'joined' | 'full' | 'error'>('loading')
+  const [timeLeft, setTimeLeft] = useState<number | null>(null)
 
-    // 初始化玩家 ID
-    useEffect(() => {
-        const pid = localStorage.getItem('reaction-player-id')
-        if (!pid) {
-            const newId = crypto.randomUUID()
-            localStorage.setItem('reaction-player-id', newId)
-            setPlayerId(newId)
-        } else {
-            setPlayerId(pid)
-        }
-    }, [])
+  // 初始化玩家 ID
+  useEffect(() => {
+    const pid = localStorage.getItem('reaction-player-id')
+    if (!pid) {
+      const newId = crypto.randomUUID()
+      localStorage.setItem('reaction-player-id', newId)
+      setPlayerId(newId)
+    } else {
+      setPlayerId(pid)
+    }
+  }, [])
 
-    // 加入房间逻辑
-    useEffect(() => {
-        if (!playerId || !numericRoomId) return
+  // 加入房间逻辑
+  useEffect(() => {
+    if (!playerId || !numericRoomId) return
 
-        async function joinRoom() {
-            const { data: roomData, error } = await supabase
-                .from('reaction_rooms')  // ✅ 修复这里
-                .select('*')
-                .eq('id', numericRoomId)
-                .single()
+    async function joinRoom() {
+      const { data: roomData, error } = await supabase
+        .from('reaction_rooms')
+        .select('*')
+        .eq('id', numericRoomId)
+        .single()
 
-            if (error || !roomData) {
-                setStatus('error')
-                return
-            }
+      if (error || !roomData) {
+        setStatus('error')
+        return
+      }
 
-            // 判断是否为第三者
-            if (
-                roomData.player1_id &&
-                roomData.player2_id &&
-                playerId !== roomData.player1_id &&
-                playerId !== roomData.player2_id
-            ) {
-                setStatus('full')
-                return
-            }
+      // 第三者禁止加入
+      if (
+        roomData.player1_id &&
+        roomData.player2_id &&
+        playerId !== roomData.player1_id &&
+        playerId !== roomData.player2_id
+      ) {
+        setStatus('full')
+        return
+      }
 
-            // 抢占 player2
-            if (roomData.player1_id !== playerId && !roomData.player2_id) {
-                const { error: updateError } = await supabase
-                    .from('reaction_rooms')
-                    .update({ player2_id: playerId })
-                    .eq('id', numericRoomId)
+      // 抢占 player2
+      if (roomData.player1_id !== playerId && !roomData.player2_id) {
+        const { error: updateError } = await supabase
+          .from('reaction_rooms')
+          .update({ player2_id: playerId })
+          .eq('id', numericRoomId)
 
-                if (updateError) {
-                    console.error("Fail to join room", updateError)
-                    setStatus('error')
-                    return
-                }
-
-                roomData.player2_id = playerId
-            }
-
-            setRoom(roomData)
-            setStatus('joined')
+        if (updateError) {
+          setStatus('error')
+          return
         }
 
-        joinRoom()
-    }, [playerId, numericRoomId])
+        roomData.player2_id = playerId
+      }
 
-    useEffect(() => {
-        if (!roomId) return
-
-        const channel = supabase
-            .channel(`reaction_room_${roomId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'reaction_rooms',
-                    filter: `id=eq.${roomId}`,
-                },
-                (payload) => {
-                    const updated = payload.new as Room
-                    setRoom(updated)
-
-                    if (updated.game_started) {
-                        console.log("游戏开始！")
-                    }
-                }
-            )
-            .subscribe()
-        return () => {
-            supabase.removeChannel(channel)
-        }
-    }, [roomId])
-
-    async function handleReady() {
-        if (!room || !playerId) return
-
-        const field = playerId === room.player1_id ? 'player1_ready' : 'player2_ready'
-
-        const { error } = await supabase
-            .from('reaction_rooms')
-            .update({ [field]: true })
-            .eq('id', room.id)
-
-        if (!error) {
-            setIsReady(true)
-        }
+      setRoom(roomData)
+      setStatus('joined')
     }
 
-    useEffect(() => {
-        if (!room) return
+    joinRoom()
+  }, [playerId, numericRoomId])
 
-        if (
-            room.player1_ready && room.player2_ready && !room.game_started
-        ) {
-            supabase
-                .from('reaction_rooms')
-                .update({ game_started: true })
-                .eq('id', room.id)
-                .then(() => console.log('游戏已启动'))
+  // 实时监听房间更新
+  useEffect(() => {
+    if (!roomId) return
+
+    const channel = supabase
+      .channel(`reaction_room_${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'reaction_rooms',
+          filter: `id=eq.${roomId}`,
+        },
+        (payload) => {
+          const updated = payload.new as Room
+          setRoom(updated)
         }
-    })
+      )
+      .subscribe()
 
-    useEffect(() => {
-        if(!room?.game_started || room.game_ended) return
-        setTimeLeft(30)
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [roomId])
 
-        const timer = setInterval(() =>{
-            setTimeLeft(prev => {
-                if(prev === null ) return null
-                if(prev <= 1){
-                    clearInterval(timer)
-                    supabase
-                        .from('reaction_rooms')
-                        .update({game_ended: true})
-                        .eq('id', room.id)
-                    return 0
-                }
-                return prev - 1
-            })
-        }, 1000)
-        return () => clearInterval(timer)
-    },[room?.game_started])
+  async function handleReady() {
+    if (!room || !playerId) return
 
-    if (status === 'loading') return <div className="p-8 text-center">加载中...</div>
-    if (status === 'error') return <div className="p-8 text-center text-red-500">房间不存在或加载失败</div>
-    if (status === 'full') return <div className="p-8 text-center text-red-500">房间已满，无法加入</div>
+    const field = playerId === room.player1_id ? 'player1_ready' : 'player2_ready'
 
-    const youAre = playerId === room?.player1_id ? 'Player 1' : 'Player 2'
+    await supabase
+      .from('reaction_rooms')
+      .update({ [field]: true })
+      .eq('id', room.id)
+  }
 
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-            <h1 className="text-2xl font-bold">⚡ Reaction 对战房间 #{room?.id}</h1>
-            <p>你是：{youAre}</p>
-            <p>等待对手进入中...</p>
-            <p>玩家1：{room?.player1_ready ? '✅ 准备' : '⏳ 未准备'}</p>
-            <p>玩家2：{room?.player2_ready ? '✅ 准备' : '⏳ 未准备'}</p>
+  // 玩家都准备好后自动开始游戏
+  useEffect(() => {
+    if (!room) return
 
-            {!isReady && <Button onClick={handleReady}>准备</Button>}
-            {room?.game_started && <p className="text-green-600 font-semibold">🎮游戏开始！</p>}
-            {room?.game_started && !room?.game_ended && (
-                <p className="text-xl text-blue-600">🕙剩余时间：{timeLeft}</p>
-            )}
-            {room?.game_ended && (
-                <p className="text-xl text-red-500">🎉游戏结束</p>
-            )}
-            <Button onClick={() => router.push('/')}>退出</Button>
-        </div>
-    )
+    if (
+      room.player1_ready &&
+      room.player2_ready &&
+      !room.game_started
+    ) {
+      supabase
+        .from('reaction_rooms')
+        .update({ game_started: true })
+        .eq('id', room.id)
+    }
+  }, [room])
+
+  // 倒计时控制
+  useEffect(() => {
+    if (!room?.game_started || room.game_ended) return
+
+    setTimeLeft(30)
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev === null) return null
+        if (prev <= 1) {
+          clearInterval(timer)
+          supabase
+            .from('reaction_rooms')
+            .update({ game_ended: true })
+            .eq('id', room.id)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [room?.game_started])
+
+  // player1 控制目标生成
+  useEffect(() => {
+    if (!room?.game_started || room.game_ended) return
+    if (playerId !== room.player1_id) return
+
+    let running = true
+
+    const generateTarget = async () => {
+      if (!running) return
+      const delay = Math.random() * 1000 + 1000
+      await new Promise(r => setTimeout(r, delay))
+
+      const newTarget = {
+        target_x: Math.random(),
+        target_y: Math.random(),
+        current_target_id: crypto.randomUUID(),
+      }
+
+      await supabase
+        .from('reaction_rooms')
+        .update(newTarget)
+        .eq('id', room.id)
+
+      generateTarget()
+    }
+
+    generateTarget()
+    return () => { running = false }
+  }, [room?.game_started, room?.game_ended, playerId])
+
+  if (status === 'loading') return <div className="p-8 text-center">加载中...</div>
+  if (status === 'error') return <div className="p-8 text-center text-red-500">房间不存在或加载失败</div>
+  if (status === 'full') return <div className="p-8 text-center text-red-500">房间已满，无法加入</div>
+
+  const youAre = playerId === room?.player1_id ? 'Player 1' : 'Player 2'
+  const isYouReady =
+    playerId === room?.player1_id ? room?.player1_ready :
+    playerId === room?.player2_id ? room?.player2_ready :
+    false
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+      <h1 className="text-2xl font-bold">⚡ Reaction 对战房间 #{room?.id}</h1>
+
+      {/* 🎯 游戏开始前 */}
+      {!room?.game_started && (
+        <>
+          <p>你是：{youAre}</p>
+          <p>等待对手进入中...</p>
+          <p>玩家1：{room?.player1_ready ? '✅ 准备' : '⏳ 未准备'}</p>
+          <p>玩家2：{room?.player2_ready ? '✅ 准备' : '⏳ 未准备'}</p>
+
+          {!isYouReady && <Button onClick={handleReady}>准备</Button>}
+        </>
+      )}
+
+      {/* 🎮 游戏进行中 */}
+      {room?.game_started && !room?.game_ended && (
+        <>
+          <p className="text-green-600 font-semibold">🎮 游戏进行中！</p>
+          <p className="text-xl text-blue-600">🕙 剩余时间：{timeLeft}</p>
+          <div className="flex gap-8 font-semibold text-lg">
+            <span>Player 1 分数：{room.player1_score ?? 0}</span>
+            <span>Player 2 分数：{room.player2_score ?? 0}</span>
+          </div>
+        </>
+      )}
+
+      {/* 🎯 点击目标 */}
+      {room?.current_target_id && !room?.game_ended && (
+        <div
+          className="absolute w-12 h-12 bg-red-500 rounded-full cursor-pointer"
+          style={{
+            top: `${(room.target_y ?? 0) * 100}%`,
+            left: `${(room.target_x ?? 0) * 100}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+          onClick={async () => {
+            if (!room || !playerId) return
+
+            const { data: latest } = await supabase
+              .from('reaction_rooms')
+              .select('current_target_id')
+              .eq('id', room.id)
+              .single()
+
+            if (!latest || latest.current_target_id !== room.current_target_id) return
+
+            const field = playerId === room.player1_id ? 'player1_score' : 'player2_score'
+            const newScore = ((room as any)[field] || 0) + 1
+
+            await supabase.from('reaction_rooms').update({
+              [field]: newScore,
+              current_target_id: null,
+            }).eq('id', room.id)
+          }}
+        />
+      )}
+
+      {/* 🏁 游戏结束 */}
+      {room?.game_ended && (
+        <>
+          <p className="text-xl text-red-500">🎉 游戏结束</p>
+          <p>最终比分：</p>
+          <p>Player 1: {room.player1_score ?? 0}</p>
+          <p>Player 2: {room.player2_score ?? 0}</p>
+          <p className="font-bold mt-2">
+            {room.player1_score === room.player2_score
+              ? '🤝 平局！'
+              : (room.player1_score ?? 0) > (room.player2_score ?? 0)
+                ? '🏆 Player 1 获胜！'
+                : '🏆 Player 2 获胜！'}
+          </p>
+        </>
+      )}
+
+      <Button onClick={() => router.push('/')}>退出</Button>
+    </div>
+  )
 }
