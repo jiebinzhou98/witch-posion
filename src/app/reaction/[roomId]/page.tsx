@@ -101,6 +101,7 @@ export default function ReactionRoomPage() {
         },
         (payload) => {
           const updated = payload.new as Room
+          console.log('房间更新',updated)
           setRoom(updated)
         }
       )
@@ -140,7 +141,7 @@ export default function ReactionRoomPage() {
         .update({ game_started: true })
         .eq('id', room.id)
     }
-  }, [room])
+  }, [room, playerId])
 
   // 倒计时控制
   useEffect(() => {
