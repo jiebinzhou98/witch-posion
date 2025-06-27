@@ -30,7 +30,6 @@ export default function ReactionRoomPage() {
     const [status, setStatus] = useState<'loading' | 'joined' | 'full' | 'error'>('loading')
     const [timeLeft, setTimeLeft] = useState<number | null>(null)
 
-    // 玩家唯一 ID
     useEffect(() => {
         const pid = localStorage.getItem('reaction-player-id')
         if (!pid) {
@@ -42,7 +41,6 @@ export default function ReactionRoomPage() {
         }
     }, [])
 
-    // 加入房间逻辑
     useEffect(() => {
         if (!playerId || !numericRoomId) return
 
@@ -84,7 +82,6 @@ export default function ReactionRoomPage() {
         joinRoom()
     }, [playerId, numericRoomId])
 
-    // 监听房间数据变更
     useEffect(() => {
         if (!roomId) return
 
@@ -111,7 +108,6 @@ export default function ReactionRoomPage() {
         }
     }, [roomId])
 
-    // 玩家点击准备
     async function handleReady() {
         if (!room || !playerId) return
 
@@ -122,7 +118,6 @@ export default function ReactionRoomPage() {
             .eq('id', room.id)
     }
 
-    // 玩家都准备，Player1 自动开始游戏
     useEffect(() => {
         if (!room || !playerId) return
         if (room.player1_ready && room.player2_ready && !room.game_started && playerId === room.player1_id) {
@@ -144,31 +139,43 @@ export default function ReactionRoomPage() {
         }
     }, [room, playerId])
 
-
-    // 倒计时逻辑
     useEffect(() => {
         if (!room?.game_started || room.game_ended) return
 
+        let timerId: ReturnType<typeof setInterval>
+        let ended = false
+
         setTimeLeft(30)
-        const timer = setInterval(() => {
+        timerId = setInterval(() => {
             setTimeLeft((prev) => {
                 if (prev === null) return null
-                if (prev <= 1) {
-                    clearInterval(timer)
+                if (prev <= 1 && !ended) {
+                    ended = true
+                    clearInterval(timerId)
+
+                    // 更新 game_ended 字段
                     supabase
                         .from('reaction_rooms')
                         .update({ game_ended: true })
                         .eq('id', room.id)
+                        .then(({ error }) => {
+                            if (error) {
+                                console.error('❌ 更新 game_ended 失败', error.message)
+                            } else {
+                                console.log('✅ 游戏已结束')
+                            }
+                        })
+
                     return 0
                 }
                 return prev - 1
             })
         }, 1000)
 
-        return () => clearInterval(timer)
+        return () => clearInterval(timerId)
     }, [room?.game_started])
 
-    // Player1 控制生成目标
+
     useEffect(() => {
         if (!room || !room.game_started || room.game_ended || playerId !== room.player1_id) return
 
@@ -200,6 +207,33 @@ export default function ReactionRoomPage() {
         generateTarget()
         return () => { running = false }
     }, [room?.game_started, room?.game_ended, playerId])
+
+
+    async function handleRestart() {
+  if (!room) return
+
+  const { error } = await supabase
+    .from('reaction_rooms')
+    .update({
+      game_started: false,
+      game_ended: false,
+      player1_ready: false,
+      player2_ready: false,
+      player1_score: 0,
+      player2_score: 0,
+      current_target_id: null,
+      target_x: null,
+      target_y: null,
+    })
+    .eq('id', room.id)
+
+  if (error) {
+    console.error("❌ 重置游戏失败:", error.message)
+  } else {
+    console.log("🔁 游戏已重置")
+  }
+}
+
 
     if (status === 'loading') return <div className="p-8 text-center">加载中...</div>
     if (status === 'error') return <div className="p-8 text-center text-red-500">房间不存在或加载失败</div>
@@ -286,6 +320,7 @@ export default function ReactionRoomPage() {
                                 ? '🏆 Player 1 获胜！'
                                 : '🏆 Player 2 获胜！'}
                     </p>
+                    <Button onClick={handleRestart} className="mt-4">重新开始</Button>
                 </>
             )}
 
