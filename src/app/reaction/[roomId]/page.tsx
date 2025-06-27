@@ -135,7 +135,7 @@ export default function ReactionRoomPage() {
   // 自动开始游戏
   useEffect(() => {
     if (!room) return
-    if (room.player1_ready && room.player2_ready && !room.game_started) {
+    if (room.player1_ready && room.player2_ready && !room.game_started && playerId === room.player1_id) {
       supabase.from('reaction_rooms')
         .update({ game_started: true })
         .eq('id', room.id)
@@ -198,7 +198,6 @@ export default function ReactionRoomPage() {
     return () => { running = false }
   }, [room?.game_started, room?.game_ended, playerId])
 
-  // render
   if (status === 'loading') return <div className="p-8 text-center">加载中...</div>
   if (status === 'error') return <div className="p-8 text-center text-red-500">房间不存在或加载失败</div>
   if (status === 'full') return <div className="p-8 text-center text-red-500">房间已满，无法加入</div>
@@ -212,12 +211,20 @@ export default function ReactionRoomPage() {
     <div className="flex flex-col items-center justify-center min-h-screen gap-4">
       <h1 className="text-2xl font-bold">⚡ Reaction 对战房间 #{room?.id}</h1>
 
-      {!room?.game_started && (
+      {!room?.game_started && room && (
         <>
           <p>你是：{youAre}</p>
-          <p>等待对手进入中...</p>
-          <p>玩家1：{room?.player1_ready ? '✅ 准备' : '⏳ 未准备'}</p>
-          <p>玩家2：{room?.player2_ready ? '✅ 准备' : '⏳ 未准备'}</p>
+          {room.player1_id && room.player2_id ? (
+            room.player1_ready && room.player2_ready ? (
+              <p>✅ 双方已准备，游戏即将开始...</p>
+            ) : (
+              <p>🧑‍🤝‍🧑 双方已进入，等待准备中...</p>
+            )
+          ) : (
+            <p>⏳ 等待对手进入中...</p>
+          )}
+          <p>玩家1：{room.player1_ready ? '✅ 准备' : '⏳ 未准备'}</p>
+          <p>玩家2：{room.player2_ready ? '✅ 准备' : '⏳ 未准备'}</p>
           {!isYouReady && <Button onClick={handleReady}>准备</Button>}
         </>
       )}
