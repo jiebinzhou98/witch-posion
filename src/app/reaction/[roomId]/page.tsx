@@ -5,14 +5,13 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 
-// 房间类型定义
 interface Room {
   id: number
   player1_id: string | null
   player2_id: string | null
   player1_ready: boolean
   player2_ready: boolean
-  game_started: boolean
+  game_started: boolean | null
   game_ended: boolean
   current_target_id?: string | null
   target_x?: number | null
@@ -31,7 +30,7 @@ export default function ReactionRoomPage() {
   const [status, setStatus] = useState<'loading' | 'joined' | 'full' | 'error'>('loading')
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
 
-  // 生成本地唯一玩家 ID
+  // 玩家唯一 ID
   useEffect(() => {
     const pid = localStorage.getItem('reaction-player-id')
     if (!pid) {
@@ -43,7 +42,7 @@ export default function ReactionRoomPage() {
     }
   }, [])
 
-  // 加入房间
+  // 加入房间逻辑
   useEffect(() => {
     if (!playerId || !numericRoomId) return
 
@@ -85,7 +84,7 @@ export default function ReactionRoomPage() {
     joinRoom()
   }, [playerId, numericRoomId])
 
-  // 实时监听房间数据
+  // 监听房间数据变更
   useEffect(() => {
     if (!roomId) return
 
@@ -101,7 +100,7 @@ export default function ReactionRoomPage() {
         },
         (payload) => {
           const updated = payload.new as Room
-          console.log('房间更新',updated)
+          console.log('📡 房间更新:', updated)
           setRoom(updated)
         }
       )
@@ -112,38 +111,35 @@ export default function ReactionRoomPage() {
     }
   }, [roomId])
 
-  // 玩家准备
+  // 玩家点击准备
   async function handleReady() {
     if (!room || !playerId) return
 
     const field = playerId === room.player1_id ? 'player1_ready' : 'player2_ready'
-    const { error } = await supabase
+    await supabase
       .from('reaction_rooms')
       .update({ [field]: true })
       .eq('id', room.id)
-
-    if (!error) {
-      const { data } = await supabase
-        .from('reaction_rooms')
-        .select('*')
-        .eq('id', room.id)
-        .single()
-
-      if (data) setRoom(data)
-    }
   }
 
-  // 自动开始游戏
+  // 玩家都准备，Player1 自动开始游戏
   useEffect(() => {
-    if (!room) return
-    if (room.player1_ready && room.player2_ready && !room.game_started && playerId === room.player1_id) {
-      supabase.from('reaction_rooms')
+    if (!room || !playerId) return
+
+    const bothReady = room.player1_ready && room.player2_ready
+    const notStarted = room.game_started !== true
+    const isPlayer1 = playerId === room.player1_id
+
+    if (bothReady && notStarted && isPlayer1) {
+      console.log('🟢 Player1 正在开始游戏...')
+      supabase
+        .from('reaction_rooms')
         .update({ game_started: true })
         .eq('id', room.id)
     }
   }, [room, playerId])
 
-  // 倒计时控制
+  // 倒计时逻辑
   useEffect(() => {
     if (!room?.game_started || room.game_ended) return
 
@@ -166,7 +162,7 @@ export default function ReactionRoomPage() {
     return () => clearInterval(timer)
   }, [room?.game_started])
 
-  // player1 控制目标生成
+  // Player1 控制生成目标
   useEffect(() => {
     if (!room || !room.game_started || room.game_ended || playerId !== room.player1_id) return
 
